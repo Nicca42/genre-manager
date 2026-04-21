@@ -1,0 +1,276 @@
+:root {
+  color: #242424;
+  background: #f7f6f3;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #f7f6f3;
+}
+
+.app-header {
+  background: rgba(247, 246, 243, 0.92);
+  border-bottom: 1px solid #e7e2da;
+  backdrop-filter: blur(16px);
+}
+
+.header-inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: #2f3437;
+  background: #ffffff;
+  border: 1px solid #dedbd3;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.05);
+}
+
+.status-bar,
+.panel,
+.empty-state {
+  background: #ffffff;
+  border: 1px solid #e7e2da;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
+}
+
+.status-bar,
+.panel {
+  padding: 16px;
+}
+
+.single-panel {
+  padding-bottom: 0;
+}
+
+.empty-state {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: #6b6259;
+}
+
+.changes-cell {
+  min-width: 144px;
+  width: 144px;
+  padding-right: 4px;
+}
+
+.save-spacer {
+  min-width: 24px;
+  width: 100%;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.save-cell {
+  position: sticky;
+  right: 12px;
+  z-index: 2;
+  min-width: 96px;
+  width: 96px;
+  padding-left: 12px;
+  padding-right: 12px;
+  white-space: nowrap;
+  background: #ffffff;
+}
+
+.change-item {
+  margin-bottom: 6px;
+}
+
+.change-item:last-child {
+  margin-bottom: 0;
+}
+
+.tracks-table {
+  width: 100%;
+  table-layout: auto;
+  min-width: 1030px;
+}
+
+.track-title-column {
+  min-width: 202px;
+  width: 202px;
+}
+
+.artist-column {
+  min-width: 173px;
+  width: 173px;
+}
+
+.genre-column {
+  min-width: 320px;
+  width: 320px;
+}
+
+.unknown-genre-row {
+  background: #fff8e7;
+}
+
+.unknown-genre-row .save-cell {
+  background: #fff8e7;
+}
+
+.unknown-genre-row:hover {
+  background: #fff3cf;
+}
+
+.unknown-genre-row:hover .save-cell {
+  background: #fff3cf;
+}
+
+.baseline-genre-row {
+  background: #edf8ef;
+}
+
+.baseline-genre-row .save-cell {
+  background: #edf8ef;
+}
+
+.baseline-genre-row:hover {
+  background: #e1f3e5;
+}
+
+.baseline-genre-row:hover .save-cell {
+  background: #e1f3e5;
+}
+
+.genre-editor {
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.genre-editor.has-unknown-tags {
+  padding: 6px;
+  border-color: #f1c36d;
+  background: #fff9ea;
+}
+
+.genre-input {
+  min-height: 38px;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.unknown-tag-strip {
+  margin-top: 6px;
+}
+
+.unknown-tag-badge {
+  color: #4c2c00;
+  background: #ffd166;
+  border: 1px solid #e6ac45;
+  text-transform: none;
+}
+
+.unsaved-save-button {
+  color: #4c2c00;
+  background: #ffd166;
+  border-color: #e6ac45;
+}
+
+.unsaved-save-button:hover {
+  background: #f4bf48;
+}
+
+.unknown-tag-panel {
+  border-color: #f1c36d;
+  background: #fffaf0;
+}
+
+.unknown-tag-promoter-row {
+  padding: 10px;
+  border: 1px solid #f0dfbc;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.generated-genre {
+  min-width: 280px;
+  flex: 1;
+}
+
+.auto-replace-input {
+  min-width: 280px;
+  flex: 1;
+}
+
+.settings-table {
+  width: 100%;
+}
+
+.settings-drag-cell {
+  width: 60px;
+  text-align: center;
+}
+
+.settings-table th:nth-child(1),
+.settings-table td:nth-child(1) {
+  width: 60px;
+}
+
+.settings-table th:nth-child(2),
+.settings-table td:nth-child(2) {
+  width: 24%;
+}
+
+.settings-table th:nth-child(3),
+.settings-table td:nth-child(3) {
+  width: 20%;
+}
+
+.settings-table th:nth-child(4),
+.settings-table td:nth-child(4) {
+  width: 48%;
+}
+
+.settings-action-cell {
+  width: 44px;
+  text-align: center;
+}
+
+.mantine-Table-th {
+  color: #6b6259;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mantine-Table-th,
+.mantine-Table-td {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.mantine-TextInput-input,
+.mantine-Select-input,
+.mantine-NumberInput-input {
+  border-color: #dedbd3;
+  background: #fbfaf8;
+}
+
+.mantine-TextInput-input:focus,
+.mantine-Select-input:focus,
+.mantine-NumberInput-input:focus {
+  border-color: #8f8a80;
+}
