@@ -25,6 +25,31 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+}
+
+.header-controls {
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.header-status {
+  min-width: 120px;
+  max-width: min(460px, 42vw);
+  text-align: right;
+}
+
+.header-folder-path {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-file-count {
+  white-space: nowrap;
 }
 
 .brand-mark {
@@ -39,7 +64,6 @@ body {
   box-shadow: 0 1px 2px rgba(15, 15, 15, 0.05);
 }
 
-.status-bar,
 .panel,
 .empty-state {
   background: #ffffff;
@@ -48,9 +72,29 @@ body {
   box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
 }
 
-.status-bar,
 .panel {
   padding: 16px;
+}
+
+@media (max-width: 760px) {
+  .header-inner {
+    align-items: flex-start;
+    flex-direction: column;
+    height: auto;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .header-controls {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .header-status {
+    max-width: 100%;
+    text-align: left;
+  }
 }
 
 .single-panel {
@@ -68,13 +112,13 @@ body {
 
 .changes-cell {
   min-width: 144px;
-  width: 144px;
+  width: 100%;
   padding-right: 4px;
 }
 
 .save-spacer {
   min-width: 24px;
-  width: 100%;
+  width: 24px;
   padding-left: 0;
   padding-right: 0;
 }
@@ -92,7 +136,12 @@ body {
 }
 
 .change-item {
-  margin-bottom: 6px;
+  margin-bottom: 5px;
+}
+
+.change-item .mantine-Text-root {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .change-item:last-child {
@@ -111,8 +160,15 @@ body {
 }
 
 .artist-column {
-  min-width: 173px;
-  width: 173px;
+  min-width: 156px;
+  width: 156px;
+}
+
+.readonly-cell-text {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 
 .genre-column {
@@ -158,23 +214,42 @@ body {
 }
 
 .genre-editor.has-unknown-tags {
-  padding: 6px;
+  padding: 5px;
   border-color: #f1c36d;
   background: #fff9ea;
 }
 
 .genre-input {
-  min-height: 38px;
+  min-height: 34px;
   height: auto;
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.35;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .unknown-tag-strip {
-  margin-top: 6px;
+  margin-top: 5px;
+}
+
+.tracks-table .mantine-TextInput-input {
+  min-height: 32px;
+  height: 32px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.tracks-table .mantine-ActionIcon-root {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+}
+
+.tracks-table .mantine-Badge-root {
+  min-height: 20px;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .unknown-tag-badge {
@@ -204,11 +279,6 @@ body {
   border: 1px solid #f0dfbc;
   border-radius: 8px;
   background: #ffffff;
-}
-
-.generated-genre {
-  min-width: 280px;
-  flex: 1;
 }
 
 .auto-replace-input {

@@ -79,6 +79,9 @@ const EDITABLE_FIELDS = [
   ["year", "Year"],
 ];
 
+const EMPTY_SELECT_VALUE = "__empty__";
+const EMPTY_SELECT_OPTION = { label: "---", value: EMPTY_SELECT_VALUE, disabled: true };
+
 function getDraft(track) {
   return { ...EMPTY_METADATA, ...track.metadata, ...track.draft };
 }
@@ -114,6 +117,19 @@ function splitGenreTags(genre) {
     .filter(Boolean);
 }
 
+function formatGenreTags(tags, config) {
+  const cleanTags = tags.filter(Boolean);
+  if (cleanTags.length === 0) return "";
+
+  const firstTag = cleanTags[0];
+  const firstTagBaseline = parseBaselineCompoundTag(firstTag, config);
+  if (firstTagBaseline?.stinky && cleanTags.length > 1) {
+    return `${firstTag} ${cleanTags.slice(1).join(", ")}`;
+  }
+
+  return cleanTags.join(", ");
+}
+
 function getKnownGenreValues(config) {
   return {
     baseline: new Set(config.baseline.map((option) => option.value)),
@@ -121,14 +137,58 @@ function getKnownGenreValues(config) {
   };
 }
 
+function getGrooveTagValue(config) {
+  return config.baseline_tags.find((option) => option.value === "grv" || option.label.toLowerCase() === "groove")?.value ?? "";
+}
+
+function getValidBaselineTags(tags, config) {
+  const allowed = new Set(config.baseline_tags.map((option) => option.value));
+  return tags.filter((tag) => allowed.has(tag));
+}
+
+function selectorOptions(options) {
+  return [EMPTY_SELECT_OPTION, ...options.map((option) => ({ label: option.label, value: option.value }))];
+}
+
+function selectorValue(value) {
+  return value || EMPTY_SELECT_VALUE;
+}
+
+function selectTagValue(value) {
+  return value === EMPTY_SELECT_VALUE ? "" : value || "";
+}
+
+function parseBaselineCompoundTag(tag, config) {
+  const baselines = [...config.baseline.map((option) => option.value)].sort((a, b) => b.length - a.length);
+  const grooveTag = getGrooveTagValue(config);
+
+  for (const baseline of baselines) {
+    if (!tag.startsWith(baseline)) continue;
+
+    let suffix = tag.slice(baseline.length);
+    const parsed = { baseline, stinky: false, baselineTags: [] };
+
+    if (grooveTag && suffix.startsWith(grooveTag)) {
+      parsed.baselineTags.push(grooveTag);
+      suffix = suffix.slice(grooveTag.length);
+    }
+
+    if (suffix === "s;") {
+      parsed.stinky = true;
+      suffix = "";
+    }
+
+    if (suffix === "") return parsed;
+  }
+
+  return null;
+}
+
 function isKnownGenreTag(tag, config) {
   const known = getKnownGenreValues(config);
   if (known.all.has(tag)) return true;
   if (tag === "s;") return true;
-  if (tag.endsWith("s;")) {
-    return known.baseline.has(tag.slice(0, -2));
-  }
-  return false;
+  return Boolean(parseBaselineCompoundTag(tag, config));
 }
 
 function getUnknownGenreTags(genre, config) {
@@ -136,18 +196,97 @@ function getUnknownGenreTags(genre, config) {
 }
 
 function hasBaselineTag(genre, config) {
-  const knownBaselines = getKnownGenreValues(config).baseline;
-  return splitGenreTags(genre).some((tag) => {
-    if (knownBaselines.has(tag)) return true;
-    if (tag.endsWith("s;")) return knownBaselines.has(tag.slice(0, -2));
-    return false;
-  });
+  return splitGenreTags(genre).some((tag) => Boolean(parseBaselineCompoundTag(tag, config)));
+}
+
+function hasEnergyTag(genre, config) {
+  const energyValues = new Set(config.track_energy.map((option) => option.value));
+  return splitGenreTags(genre).some((tag) => energyValues.has(tag));
+}
+
+function needsSingleEdit(track, config) {
+  const genre = track?.metadata?.genre ?? "";
+  return !hasBaselineTag(genre, config) || !hasEnergyTag(genre, config);
+}
+
+function sortTracksForTagging(tracks, config) {
+  return tracks
+    .map((track, index) => ({ track, index }))
+    .sort((left, right) => {
+      const leftComplete = !needsSingleEdit(left.track, config);
+      const rightComplete = !needsSingleEdit(right.track, config);
+      if (leftComplete !== rightComplete) return leftComplete ? 1 : -1;
+      return left.index - right.index;
+    })
+    .map(({ track }) => track);
+}
+
+function findNextSingleEditIndex(tracks, config, startIndex = 0) {
+  const start = Math.max(0, startIndex);
+  for (let index = start; index < tracks.length; index += 1) {
+    if (needsSingleEdit(tracks[index], config)) return index;
+  }
+  return -1;
+}
+
+function findPreviousSingleEditIndex(tracks, config, startIndex) {
+  const start = Math.min(tracks.length - 1, startIndex);
+  for (let index = start; index >= 0; index -= 1) {
+    if (needsSingleEdit(tracks[index], config)) return index;
+  }
+  return -1;
 }
 
 function getTrackRowClass(genre, config) {
   if (hasBaselineTag(genre, config)) return "baseline-genre-row";
   if (getUnknownGenreTags(genre, config).length > 0) return "unknown-genre-row";
   return undefined;
+}
+
+function parseGenreToSingleState(genre, config) {
+  const tags = splitGenreTags(genre);
+  const state = {
+    baseline: "",
+    stinky: false,
+    baselineTags: [],
+    vocalTags: "",
+    trackEnergy: "",
+    otherTags: [],
+  };
+  const groups = [
+    ["baselineTags", config.baseline_tags],
+    ["otherTags", config.other_tags],
+  ];
+  const vocalTagValues = new Set(config.vocal_tags.map((option) => option.value));
+  const trackEnergyValues = new Set(config.track_energy.map((option) => option.value));
+
+  tags.forEach((tag) => {
+    const baselineCompound = parseBaselineCompoundTag(tag, config);
+    if (baselineCompound) {
+      state.baseline = baselineCompound.baseline;
+      state.stinky = baselineCompound.stinky;
+      baselineCompound.baselineTags.forEach((baselineTag) => {
+        if (!state.baselineTags.includes(baselineTag)) state.baselineTags.push(baselineTag);
+      });
+      return;
+    }
+    if (trackEnergyValues.has(tag)) {
+      state.trackEnergy = tag;
+      return;
+    }
+    if (vocalTagValues.has(tag)) {
+      state.vocalTags = tag;
+      return;
+    }
+
+    groups.forEach(([stateKey, options]) => {
+      if (options.some((option) => option.value === tag) && !state[stateKey].includes(tag)) {
+        state[stateKey].push(tag);
+      }
+    });
+  });
+
+  return state;
 }
 
 function normalizeGenreConfig(config) {
@@ -203,9 +342,17 @@ function applyAutoReplaceToGenre(genre, config) {
 
   if (replacements.size === 0) return genre;
 
-  return splitGenreTags(genre)
-    .map((tag) => replacements.get(tag) ?? tag)
-    .join(", ");
+  let changed = false;
+  const replacedTags = splitGenreTags(genre).map((tag) => {
+    const replacement = replacements.get(tag);
+    if (replacement && replacement !== tag) {
+      changed = true;
+      return replacement;
+    }
+    return tag;
+  });
+
+  return changed ? formatGenreTags(replacedTags, config) : genre;
 }
 
 function applyAutoReplacementsToTrack(track, config) {
@@ -250,8 +397,10 @@ function App() {
   const [savedPath, setSavedPath] = useState("");
   const [playingPath, setPlayingPath] = useState("");
   const [genreConfig, setGenreConfig] = useState(DEFAULT_GENRE_CONFIG);
+  const [genreConfigDraft, setGenreConfigDraft] = useState(DEFAULT_GENRE_CONFIG);
   const [configDirty, setConfigDirty] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("mass");
   const audioRef = useRef(null);
   const savedTimerRef = useRef(null);
 
@@ -260,12 +409,14 @@ function App() {
       .then((config) => {
         const normalized = normalizeGenreConfig(config);
         setGenreConfig(normalized);
-        setTracks((current) => current.map((track) => applyAutoReplacementsToTrack(track, normalized)));
+        setGenreConfigDraft(normalized);
+        setTracks((current) => sortTracksForTagging(current.map((track) => applyAutoReplacementsToTrack(track, normalized)), normalized));
       })
       .catch(() => {
         const normalized = normalizeGenreConfig(DEFAULT_GENRE_CONFIG);
         setGenreConfig(normalized);
-        setTracks((current) => current.map((track) => applyAutoReplacementsToTrack(track, normalized)));
+        setGenreConfigDraft(normalized);
+        setTracks((current) => sortTracksForTagging(current.map((track) => applyAutoReplacementsToTrack(track, normalized)), normalized));
       });
   }, []);
 
@@ -301,8 +452,12 @@ function App() {
     setError("");
     try {
       const scanned = await invoke("scan_music_folder", { path });
-      setTracks(scanned.map((track) => applyAutoReplacementsToTrack({ ...track, draft: {}, error: "" }, genreConfig)));
-      setActiveIndex(0);
+      const scannedTracks = sortTracksForTagging(
+        scanned.map((track) => applyAutoReplacementsToTrack({ ...track, draft: {}, error: "" }, genreConfig)),
+        genreConfig,
+      );
+      setTracks(scannedTracks);
+      setActiveIndex(Math.max(0, findPreviousSingleEditIndex(scannedTracks, genreConfig, scannedTracks.length - 1)));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -329,8 +484,11 @@ function App() {
 
   function replaceTrack(updated) {
     setTracks((current) =>
-      current.map((track) =>
-        track.path === updated.path ? { ...track, metadata: updated.metadata, duration_seconds: updated.duration_seconds, draft: {}, error: "" } : track,
+      sortTracksForTagging(
+        current.map((track) =>
+          track.path === updated.path ? { ...track, metadata: updated.metadata, duration_seconds: updated.duration_seconds, draft: {}, error: "" } : track,
+        ),
+        genreConfig,
       ),
     );
   }
@@ -351,7 +509,21 @@ function App() {
       savedTimerRef.current = setTimeout(() => {
         setSavedPath((current) => (current === updated.path ? "" : current));
         if (options.advanceAfterSave) {
-          setActiveIndex((currentIndex) => Math.min(currentIndex + 1, tracks.length - 1));
+          setActiveIndex((currentIndex) => {
+            const updatedTracks = sortTracksForTagging(
+              tracks.map((item) =>
+                item.path === updated.path ? { ...item, metadata: updated.metadata, duration_seconds: updated.duration_seconds, draft: {}, error: "" } : item,
+              ),
+              genreConfig,
+            );
+            const savedIndex = updatedTracks.findIndex((item) => item.path === updated.path);
+            const anchorIndex = savedIndex === -1 ? currentIndex : savedIndex;
+            const nextIndex = findPreviousSingleEditIndex(updatedTracks, genreConfig, anchorIndex - 1);
+            if (nextIndex !== -1) return nextIndex;
+
+            const previousIndex = findNextSingleEditIndex(updatedTracks, genreConfig, anchorIndex + 1);
+            return previousIndex !== -1 ? previousIndex : anchorIndex;
+          });
         }
       }, 2000);
     } catch (err) {
@@ -386,8 +558,22 @@ function App() {
       : audioRef.current.currentTime + seconds;
   }
 
+  function playTrackFromStart(track) {
+    if (!audioRef.current || !track) return;
+    audioRef.current.pause();
+    audioRef.current.src = convertFileSrc(track.path);
+    audioRef.current.currentTime = 0;
+    audioRef.current
+      .play()
+      .then(() => setPlayingPath(track.path))
+      .catch((err) => {
+        setPlayingPath("");
+        setTracks((current) => current.map((item) => (item.path === track.path ? { ...item, error: `Playback failed: ${err.message}` } : item)));
+      });
+  }
+
   function updateGenreConfig(group, index, key, value) {
-    setGenreConfig((current) => ({
+    setGenreConfigDraft((current) => ({
       ...current,
       [group]: current[group].map((option, optionIndex) => (optionIndex === index ? { ...option, [key]: value } : option)),
     }));
@@ -395,7 +581,7 @@ function App() {
   }
 
   function addGenreOption(group) {
-    setGenreConfig((current) => ({
+    setGenreConfigDraft((current) => ({
       ...current,
       [group]: [...current[group], { label: "", value: "", auto_replace: [] }],
     }));
@@ -403,7 +589,7 @@ function App() {
   }
 
   function removeGenreOption(group, index) {
-    setGenreConfig((current) => ({
+    setGenreConfigDraft((current) => ({
       ...current,
       [group]: current[group].filter((_, optionIndex) => optionIndex !== index),
     }));
@@ -412,7 +598,7 @@ function App() {
 
   function reorderGenreOption(group, fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
-    setGenreConfig((current) => {
+    setGenreConfigDraft((current) => {
       const nextOptions = [...current[group]];
       const [moved] = nextOptions.splice(fromIndex, 1);
       nextOptions.splice(toIndex, 0, moved);
@@ -430,8 +616,11 @@ function App() {
       const saved = await invoke("save_genre_config", { config: prepareGenreConfigForSave(configToSave) });
       const normalized = normalizeGenreConfig(saved);
       setGenreConfig(normalized);
+      setGenreConfigDraft(normalized);
       const refreshedTracks = await reanalyzeLoadedTracks(tracks, normalized);
-      setTracks(refreshedTracks);
+      const sortedTracks = sortTracksForTagging(refreshedTracks, normalized);
+      setTracks(sortedTracks);
+      setActiveIndex(Math.max(0, findPreviousSingleEditIndex(sortedTracks, normalized, sortedTracks.length - 1)));
       setConfigDirty(false);
       return normalized;
     } finally {
@@ -440,7 +629,7 @@ function App() {
   }
 
   async function saveGenreConfig() {
-    await persistGenreConfig(genreConfig);
+    await persistGenreConfig(genreConfigDraft);
   }
 
   async function addUnknownTag(tag, group) {
@@ -457,7 +646,22 @@ function App() {
     await persistGenreConfig(nextConfig);
   }
 
-  const activeTrack = tracks[activeIndex] ?? null;
+  const singleTrackIndex = useMemo(() => {
+    if (savedPath) return tracks.findIndex((track) => track.path === savedPath);
+    if (needsSingleEdit(tracks[activeIndex], genreConfig)) return activeIndex;
+
+    const previousFromActive = findPreviousSingleEditIndex(tracks, genreConfig, activeIndex);
+    if (previousFromActive !== -1) return previousFromActive;
+    return findPreviousSingleEditIndex(tracks, genreConfig, tracks.length - 1);
+  }, [tracks, genreConfig, activeIndex, savedPath]);
+  useEffect(() => {
+    if (!savedPath && singleTrackIndex !== -1 && singleTrackIndex !== activeIndex) {
+      setActiveIndex(singleTrackIndex);
+    }
+  }, [singleTrackIndex, activeIndex, savedPath]);
+  const activeTrack = singleTrackIndex === -1 ? null : tracks[singleTrackIndex] ?? null;
+  const previousSingleIndex = singleTrackIndex === -1 ? -1 : findNextSingleEditIndex(tracks, genreConfig, singleTrackIndex + 1);
+  const nextSingleIndex = singleTrackIndex === -1 ? -1 : findPreviousSingleEditIndex(tracks, genreConfig, singleTrackIndex - 1);
 
   return (
     <AppShell header={{ height: 70 }} padding="md">
@@ -474,7 +678,18 @@ function App() {
               </Text>
             </div>
           </Group>
-          <Group gap="xs">
+          <Group gap="sm" className="header-controls" wrap="nowrap">
+            <div className="header-status">
+              <Group gap={6} wrap="nowrap">
+                <Text size="sm" fw={600} className="header-folder-path" title={folderPath || "No folder selected"}>
+                  {folderPath || "No folder selected"}
+                </Text>
+                {loading && <Loader size="xs" />}
+              </Group>
+              <Text size="xs" c="dimmed" className="header-file-count">
+                {tracks.length} file{tracks.length === 1 ? "" : "s"} loaded
+              </Text>
+            </div>
             <Button leftSection={<IconFolderOpen size={18} />} variant="light" onClick={pickFolder}>
               Choose folder
             </Button>
@@ -488,22 +703,9 @@ function App() {
       <AppShell.Main>
         <Container size="xl">
           <Stack gap="md">
-            <Paper className="status-bar">
-              <Group justify="space-between" align="center">
-                <div>
-                  <Text size="sm" fw={600}>
-                    {folderPath || "No folder selected"}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {tracks.length} supported audio file{tracks.length === 1 ? "" : "s"} loaded
-                  </Text>
-                </div>
-                {loading && <Loader size="sm" />}
-              </Group>
-              {error && <Text c="red" size="sm">{error}</Text>}
-            </Paper>
+            {error && <Text c="red" size="sm">{error}</Text>}
 
-            <Tabs defaultValue="mass">
+            <Tabs value={activeTab} onChange={(value) => setActiveTab(value || "mass")}>
               <Tabs.List>
                 <Tabs.Tab value="mass">Mass edits</Tabs.Tab>
                 <Tabs.Tab value="single">Single edits</Tabs.Tab>
@@ -527,13 +729,17 @@ function App() {
               <Tabs.Panel value="single" pt="md">
                 <SingleEdits
                   track={activeTrack}
-                  index={activeIndex}
+                  index={singleTrackIndex}
                   total={tracks.length}
+                  previousIndex={previousSingleIndex}
+                  nextIndex={nextSingleIndex}
                   genreConfig={genreConfig}
+                  isActive={activeTab === "single"}
                   playingPath={playingPath}
                   savingPath={savingPath}
                   savedPath={savedPath}
                   onPlay={playTrack}
+                  onAutoPlay={playTrackFromStart}
                   onSkipForward={skipForward}
                   onSave={(track) => saveTrack(track, { advanceAfterSave: true })}
                   onDraft={updateDraft}
@@ -544,7 +750,7 @@ function App() {
 
               <Tabs.Panel value="genre" pt="md">
                 <GenreEdits
-                  config={genreConfig}
+                  config={genreConfigDraft}
                   dirty={configDirty}
                   saving={configSaving}
                   onChange={updateGenreConfig}
@@ -571,7 +777,7 @@ function MassEdits({ tracks, genreConfig, playingPath, savingPath, savedPath, on
   return (
     <Paper className="panel">
       <ScrollArea>
-        <Table className="tracks-table" verticalSpacing="sm" horizontalSpacing={4} highlightOnHover>
+        <Table className="tracks-table" verticalSpacing={7} horizontalSpacing={4} highlightOnHover>
           <Table.Thead>
               <Table.Tr>
                 <Table.Th>Play</Table.Th>
@@ -635,7 +841,9 @@ function TrackRow({ track, genreConfig, playing, saving, saved, onPlay, onSkipFo
         <TextInput value={draft.title} placeholder={track.file_name} onChange={(event) => onDraft(track.path, "title", event.currentTarget.value)} />
       </Table.Td>
       <Table.Td className="artist-column">
-        <TextInput value={draft.artist} onChange={(event) => onDraft(track.path, "artist", event.currentTarget.value)} />
+        <Text size="sm" className="readonly-cell-text">
+          {draft.artist || "blank"}
+        </Text>
       </Table.Td>
       <Table.Td className="genre-column">
         <GenreField value={draft.genre} unknownTags={unknownTags} onChange={(value) => onDraft(track.path, "genre", value)} />
@@ -708,22 +916,73 @@ function GenreField({ value, unknownTags, onChange }) {
   );
 }
 
-function SingleEdits({ track, index, total, genreConfig, playingPath, savingPath, savedPath, onPlay, onSkipForward, onSave, onDraft, onNavigate, onAddUnknownTag }) {
-  const [baseline, setBaseline] = useState("b:D");
+function SingleEdits({
+  track,
+  index,
+  total,
+  previousIndex,
+  nextIndex,
+  genreConfig,
+  isActive,
+  playingPath,
+  savingPath,
+  savedPath,
+  onPlay,
+  onAutoPlay,
+  onSkipForward,
+  onSave,
+  onDraft,
+  onNavigate,
+  onAddUnknownTag,
+}) {
+  const [baseline, setBaseline] = useState("");
   const [stinky, setStinky] = useState(false);
   const [baselineTags, setBaselineTags] = useState([]);
-  const [vocalTags, setVocalTags] = useState([]);
-  const [trackEnergy, setTrackEnergy] = useState([]);
+  const [vocalTags, setVocalTags] = useState("");
+  const [trackEnergy, setTrackEnergy] = useState("");
   const [otherTags, setOtherTags] = useState([]);
+  const [selectorSourcePath, setSelectorSourcePath] = useState("");
+  const suppressGeneratedDraftRef = useRef("");
+  const lastAutoPlayedPathRef = useRef("");
 
   const generatedGenre = useMemo(() => {
-    const head = `${baseline}${stinky ? "s;" : ""}`;
-    return [head, ...baselineTags, ...vocalTags, ...trackEnergy, ...otherTags].filter(Boolean).join(", ");
-  }, [baseline, stinky, baselineTags, vocalTags, trackEnergy, otherTags]);
+    const cleanBaselineTags = getValidBaselineTags(baselineTags, genreConfig);
+    const grooveTag = getGrooveTagValue(genreConfig);
+    const hasGroove = Boolean(grooveTag && cleanBaselineTags.includes(grooveTag));
+    const remainingBaselineTags = cleanBaselineTags.filter((tag) => tag !== grooveTag);
+    const head = baseline ? `${baseline}${hasGroove ? grooveTag : ""}${stinky ? "s;" : ""}` : "";
+    const tail = [...remainingBaselineTags, vocalTags, ...otherTags, trackEnergy].filter(Boolean);
+
+    if (head && stinky && tail.length > 0) return `${head} ${tail.join(", ")}`;
+    return [head, ...tail].filter(Boolean).join(", ");
+  }, [baseline, stinky, baselineTags, vocalTags, trackEnergy, otherTags, genreConfig]);
 
   useEffect(() => {
-    if (track) onDraft(track.path, "genre", generatedGenre);
-  }, [generatedGenre, track?.path]);
+    if (!track) return;
+    const parsed = parseGenreToSingleState(getDraft(track).genre, genreConfig);
+    suppressGeneratedDraftRef.current = track.path;
+    setBaseline(parsed.baseline);
+    setStinky(parsed.stinky);
+    setBaselineTags(parsed.baselineTags);
+    setVocalTags(parsed.vocalTags);
+    setTrackEnergy(parsed.trackEnergy);
+    setOtherTags(parsed.otherTags);
+    setSelectorSourcePath(track.path);
+    if (isActive && lastAutoPlayedPathRef.current !== track.path) {
+      lastAutoPlayedPathRef.current = track.path;
+      onAutoPlay(track);
+    }
+  }, [track?.path, genreConfig, isActive]);
+
+  useEffect(() => {
+    if (!track) return;
+    if (selectorSourcePath !== track.path) return;
+    if (suppressGeneratedDraftRef.current === track.path) {
+      suppressGeneratedDraftRef.current = "";
+      return;
+    }
+    onDraft(track.path, "genre", generatedGenre);
+  }, [generatedGenre, selectorSourcePath, track?.path]);
 
   if (!track) return <EmptyState />;
 
@@ -735,10 +994,10 @@ function SingleEdits({ track, index, total, genreConfig, playingPath, savingPath
       <Paper className="panel single-panel">
         <Group justify="space-between" mb="md">
           <Group gap="xs">
-            <ActionIcon variant="subtle" disabled={index === 0} onClick={() => onNavigate(Math.max(0, index - 1))}>
+            <ActionIcon variant="subtle" disabled={previousIndex === -1} onClick={() => onNavigate(previousIndex)}>
               <IconChevronLeft size={18} />
             </ActionIcon>
-            <ActionIcon variant="subtle" disabled={index >= total - 1} onClick={() => onNavigate(Math.min(total - 1, index + 1))}>
+            <ActionIcon variant="subtle" disabled={nextIndex === -1} onClick={() => onNavigate(nextIndex)}>
               <IconChevronRight size={18} />
             </ActionIcon>
             <div>
@@ -790,35 +1049,42 @@ function SingleEdits({ track, index, total, genreConfig, playingPath, savingPath
           <Group align="flex-end">
             <Select
               label="Baseline"
-              data={genreConfig.baseline.map((option) => ({ label: option.label, value: option.value }))}
-              value={baseline}
+              data={selectorOptions(genreConfig.baseline)}
+              value={selectorValue(baseline)}
+              placeholder="Select baseline"
               allowDeselect={false}
-              onChange={setBaseline}
+              onChange={(value) => setBaseline(selectTagValue(value))}
             />
-            <Checkbox label="Stinky" checked={stinky} onChange={(event) => setStinky(event.currentTarget.checked)} />
-            <TextInput label="Generated genre" value={generatedGenre} readOnly className="generated-genre" />
+            <Select
+              label="Track Energy"
+              data={selectorOptions(genreConfig.track_energy)}
+              value={selectorValue(trackEnergy)}
+              placeholder="Select energy"
+              allowDeselect={false}
+              onChange={(value) => setTrackEnergy(selectTagValue(value))}
+            />
+            <Select
+              label="Vocals"
+              data={selectorOptions(genreConfig.vocal_tags)}
+              value={selectorValue(vocalTags)}
+              placeholder="Select vocals"
+              allowDeselect={false}
+              onChange={(value) => setVocalTags(selectTagValue(value))}
+            />
           </Group>
-          <Checkbox.Group label="Baseline Tags" value={baselineTags} onChange={setBaselineTags}>
+          <div>
+            <Text size="sm" fw={500}>Baseline Tags</Text>
             <Group mt="xs">
-              {genreConfig.baseline_tags.map((option) => (
-                <Checkbox key={option.value} label={option.label} value={option.value} />
-              ))}
+              <Checkbox label="Stinky" checked={stinky} onChange={(event) => setStinky(event.currentTarget.checked)} />
+              <Checkbox.Group value={baselineTags} onChange={(value) => setBaselineTags(getValidBaselineTags(value, genreConfig))}>
+                <Group>
+                  {genreConfig.baseline_tags.map((option) => (
+                    <Checkbox key={option.value} label={option.label} value={option.value} />
+                  ))}
+                </Group>
+              </Checkbox.Group>
             </Group>
-          </Checkbox.Group>
-          <Checkbox.Group label="Vocal Tags" value={vocalTags} onChange={setVocalTags}>
-            <Group mt="xs">
-              {genreConfig.vocal_tags.map((option) => (
-                <Checkbox key={option.value} label={option.label} value={option.value} />
-              ))}
-            </Group>
-          </Checkbox.Group>
-          <Checkbox.Group label="Track Energy" value={trackEnergy} onChange={setTrackEnergy}>
-            <Group mt="xs">
-              {genreConfig.track_energy.map((option) => (
-                <Checkbox key={option.value} label={option.label} value={option.value} />
-              ))}
-            </Group>
-          </Checkbox.Group>
+          </div>
           <Checkbox.Group label="Other Tags" value={otherTags} onChange={setOtherTags}>
             <Group mt="xs">
               {genreConfig.other_tags.map((option) => (
